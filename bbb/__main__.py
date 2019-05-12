@@ -26,9 +26,8 @@ log.setLevel(log.DEBUG)
 def __main__():
     app = QtCore.QCoreApplication(sys.argv)
     drc = DRC(app)
-    log.info("started bbb code")
-    QtCore.QTimer.singleShot(5000, app.quit)
+    drc.start()
+    drc.done.connect(app.quit)
     app.exec_()
-    log.info("done")
 
 if __name__ == "__main__":__main__()

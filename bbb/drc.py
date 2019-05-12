@@ -2,34 +2,71 @@ from PyQt5 import QtCore
 from PyQt5 import QtNetwork
 import logging
 import struct
+from enum import Enum
 
 log = logging.getLogger("drc bbb")
 
-class DRC():
+class state(Enum):
+    off = 0
+    startup = 1
+    on = 2
+    shutdown = 3
+    error = -1
+    notfound = -2
+
+class DRC(QtCore.QObject):
+    done = QtCore.pyqtSignal()
     def __init__(self, qtapp):
+        super().__init__()
         self.qtapp = qtapp
 
         self.socket = QtNetwork.QUdpSocket()
         self.socket.bind(QtNetwork.QHostAddress(""), 6001)
-        self.socket.readyRead.connect(self.recvudp)
-        log.info("Connected to udp socket")
-        self.sendcnt = 0
-        self.recvcnt = 0
+
+        self.udpsendcnt = 0
+        self.udprecvcnt = 0
+        self.udprecvcntold = 0
+        self.dataIn = []
 
         self.t1 = QtCore.QTimer(qtapp)
         self.t1.setInterval(10)
         self.t1.timeout.connect(self.sample)
+
+    def start(self):
+        self.socket.readyRead.connect(self.recvudp)
+        self.state = state.on
         self.t1.start()
 
-    def recvudp(self): pass
+    def stop(self):
+        self.t1.stop()
+        log.info("Stopped sending on UDP socket")
+        self.done.emit()
+
+    def recvudp(self):
+        while self.socket.hasPendingDatagrams():
+            data = self.socket.readDatagram(1024)
+            self.dataIn = struct.unpack("{}f".format(3),data[0])
+            #log.info(self.dataIn)
+            self.killcmd = self.dataIn[2]>0
+            #if self.udprecvcnt%100==0:log.debug(self.dataIn)
+        self.udprecvcnt+=1
 
     def sample(self):
+        disc = (self.udprecvcnt-self.udprecvcntold)>5 and self.udprecvcnt>0
+        disc |= (self.udprecvcnt-self.udprecvcntold)>100
+        if disc: self.stop(); return
+        self.udprecvcntold = self.udprecvcnt
+        if self.killcmd and self.state == state.on:
+            log.info("received kill command")
+            QtCore.QTimer.singleShot(500, self.stop)
+            self.state = state.shutdown
         #input
         #processing
         #output
         self.sendudp()
 
     def sendudp(self):
-        databytes = struct.pack("{}f".format(1),*[self.sendcnt])
+        if not self.udpsendcnt: log.debug("Started sending on UDP socket")
+        databytes = struct.pack("{}f".format(3),*[self.udpsendcnt, self.udprecvcnt, self.state.value])
         self.socket.writeDatagram(databytes, QtNetwork.QHostAddress.Broadcast, 6000)
-        self.sendcnt+=1
+        self.udpsendcnt+=1
