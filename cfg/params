@@ -1,0 +1,25 @@
+[connection]
+
+bbbip = 192.168.0.13
+bbbuser = root
+bbbpw = root
+bbbdst = /drc
+bbbsrc = bbb
+
+[bbb2host]
+ch0 = msgcount
+ch1 = stopped
+ch2 = reset
+ch3 = state
+
+ch4 = mainmode
+ch5 = act_m1pos
+
+[host2bbb]
+ch0 = msgcount
+ch1 = stop
+ch2 = reset
+ch3 = kill
+
+ch4 = mainmode
+ch5 = ref_m1pos
