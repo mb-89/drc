@@ -1,6 +1,9 @@
 import logging
 import os.path as op
 import time
+from PyQt5 import QtCore
+import sys
+from drc import DRC
 
 log = logging.getLogger("drc bbb")
 log.DEBUG = logging.DEBUG
@@ -20,6 +23,12 @@ filehandler.setLevel(log.DEBUG)
 
 log.setLevel(log.DEBUG)
 
-log.info("started bbb code")
-time.sleep(2)
-log.info("done")
+def __main__():
+    app = QtCore.QCoreApplication(sys.argv)
+    drc = DRC(app)
+    log.info("started bbb code")
+    QtCore.QTimer.singleShot(5000, app.quit)
+    app.exec_()
+    log.info("done")
+
+if __name__ == "__main__":__main__()
