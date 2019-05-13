@@ -8,5 +8,5 @@ log.BBB = {"target": "BBB"}
 logHandler = logging.StreamHandler()
 logHandler.setFormatter(log._fmt)
 log.addHandler(logHandler)
-log.setLevel(log.INFO)
-logHandler.setLevel(log.INFO)
+log.setLevel(log.DEBUG)
+logHandler.setLevel(log.DEBUG)

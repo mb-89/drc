@@ -2,13 +2,17 @@ import logging
 from paramiko import SSHClient, AutoAddPolicy
 from scp import SCPClient
 import os.path as op
+import os
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5 import QtNetwork
 import time
 from enum import Enum
 import struct
+from subprocess import Popen,STDOUT
+from collections import deque
 
 log = logging.getLogger("drc host")
+FNULL = open(os.devnull, 'w')
 
 class state(Enum):
     off = 0
@@ -28,9 +32,29 @@ class Backend(QtCore.QObject):
         self._state = state.off
         self._oldstate = state.off
         self.cfg = cfg
-        self.state = state.off
+        self.state = state.notfound
         self.states = state
+        self.pingtimer = QtCore.QTimer()
+        self.pingtimer.setInterval(1000)
+        self.pingtimer.timeout.connect(self.ping)
+        self.pingprocess = None
+        self.pingtimer.start()
+        self.data = deque(maxlen=30*100)
+        self.ping()
 
+    def ping(self):
+        if self.state == state.off or self.state == state.notfound:
+            if self.pingprocess is None:
+                self.pingprocess = Popen(
+                    ['ping','-n','1',"-w", "10", self.cfg["connection"]["bbbip"]],
+                    stdout=FNULL, stderr=STDOUT)
+            else:
+                self.pingprocess.communicate(input='\n')
+                ret = self.pingprocess.returncode
+                if ret is not None:
+                    if ret == 0 and self.state != state.off: self.state = state.off
+                    elif ret != 0 and self.state != state.notfound: self.state = state.notfound
+                    self.pingprocess = None
 
     def toggleStatus(self):
         if      self.state == state.off: self.start()
@@ -44,6 +68,7 @@ class Backend(QtCore.QObject):
         self.bgworker.moveToThread(self.bgthread)
         self.bgthread.started.connect(self.bgworker.run)
         self.bgworker.done.connect(self.bgthread.quit)
+        self.bgworker.dataRecv.connect(self.storeData)
         self.bgthread.finished.connect(lambda: self._setstate(state.off))
         self.bgthread.start()
         #print(f"start / {int(QtCore.QThread.currentThreadId())}")
@@ -54,6 +79,9 @@ class Backend(QtCore.QObject):
         if self.state == state.off: return
         self.state = state.shutdown
         self.bgworker.shutdown()
+
+    def storeData(self, newrow):
+        self.data.append((time.time(), *newrow))
 
     def _setstate(self, x): self.state = x
     @property
@@ -66,22 +94,24 @@ class Backend(QtCore.QObject):
             self.started.emit()
             log.info("Connected to bbb", extra = log.HST)
         if self._state == state.off:
-            if self._oldstate != state.shutdown and self._oldstate != state.off:
+            if self._oldstate != state.notfound and self._oldstate != state.shutdown and self._oldstate != state.off:
                 log.error("Connection to bbb interrupted", extra = log.HST)
-            else:
+            elif self._oldstate != state.notfound:
                 log.info("Disconnected from bbb", extra = log.HST)
             self.stopped.emit()
         self._oldstate = self._state
 
 class BackgroundWorker(QtCore.QObject):
     done = QtCore.pyqtSignal()
+    dataRecv = QtCore.pyqtSignal(tuple)
     def __init__(self,cfg):
         super().__init__()
         self.cfg = cfg
-        #print(f"{int(QtCore.QThread.currentThreadId())}")
+        print(f"{int(QtCore.QThread.currentThreadId())}")
     def run(self):
         self.remotestartup()
         self.updstartup()
+        self.udpwatchdog = -1
         self.SlowSamples = 0
         self.FastSamples = 0
         self.killcmd = False
@@ -98,31 +128,25 @@ class BackgroundWorker(QtCore.QObject):
         #print(f"{self.samples} / {int(QtCore.QThread.currentThreadId())}")
         self.SlowSamples+=1
         self.remoteIsRunning = not self.sshout.channel.exit_status_ready()
-        if self.remoteIsRunning and self.sshout.channel.recv_ready():
+        if self.sshout.channel.recv_ready():
             input = [x.strip() for x in self.sshout.channel.recv(1024).decode("utf-8").split("\n")]
             input = [x for x in input if x]
             for x in input: log.debug(x, extra = log.BBB)
-        if not self.remoteIsRunning:
-            input = [x.strip() for x in self.sshout.channel.recv(1024).decode("utf-8").split("\n")]
-            input = [x for x in input if x]
-            for x in input: log.debug(x, extra = log.BBB)
-            self.disconnect()
+        if not self.remoteIsRunning: self.disconnect()
 
     def sampleFast(self):
         self.FastSamples+=1
-        disc = (self.udprecvcnt-self.udprecvcntold)>5 and self.udprecvcnt>0
-        disc |= (self.udprecvcnt-self.udprecvcntold)>100
-        if disc:
-            self.disconnect();return
-        self.udprecvcntold = self.udprecvcnt
+        self.udpwatchdog -=1
+        if self.udpwatchdog == 0: self.disconnect();return
+
         self.sendudp()
 
     def disconnect(self):
+        self.socket.close()
         self.done.emit()
 
     def updstartup(self):
         self.udprecvcnt = 0
-        self.udprecvcntold = 0
         self.udpsendcnt = 0
         self.socket = QtNetwork.QUdpSocket()
         self.socket.bind(QtNetwork.QHostAddress(""), 6000)
@@ -130,15 +154,16 @@ class BackgroundWorker(QtCore.QObject):
         log.debug("Connected to socket, waiting for udp stream", extra = log.HST)
 
     def recvudp(self):
-        if self.udprecvcnt == 0:
-            log.debug("udp stream received", extra = log.HST)
         while self.socket.hasPendingDatagrams():
             data = self.socket.readDatagram(1024)
-            self.dataIn = struct.unpack("{}f".format(3),data[0])
+            self.dataIn = struct.unpack("{}f".format(4),data[0])
+            self.dataRecv.emit(self.dataIn)
             #if self.udprecvcnt%100==0:log.debug(self.dataIn, extra = log.HST)
         self.udprecvcnt+=1
+        self.udpwatchdog = 10
 
     def sendudp(self):
+        if self.udprecvcnt < 1: return
         databytes = struct.pack("{}f".format(3),*[self.udpsendcnt, self.udprecvcnt, self.killcmd])
         self.socket.writeDatagram(databytes, QtNetwork.QHostAddress.Broadcast, 6001)
         self.udpsendcnt+=1

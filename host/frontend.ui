@@ -51,6 +51,7 @@
      <string>tools</string>
     </property>
     <addaction name="actionLog"/>
+    <addaction name="actionPlotter"/>
    </widget>
    <widget class="QMenu" name="menuCommands">
     <property name="title">
@@ -75,6 +76,14 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+T</string>
+   </property>
+  </action>
+  <action name="actionPlotter">
+   <property name="text">
+    <string>Plotter</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+P</string>
    </property>
   </action>
  </widget>

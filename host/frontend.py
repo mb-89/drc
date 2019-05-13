@@ -4,14 +4,14 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5 import uic
 import os.path as op
 from functools import partial
+from host.plotter import plotter
 
 log = logging.getLogger("drc host")
 
 class Frontend():
-    def __init__(self, backend):
+    def __init__(self, backend,qtapp):
+        self.qtapp = qtapp
         self.backend = backend
-        self.qtapp = QtWidgets.QApplication(sys.argv)
-        self.qtapp.setStyle("Fusion")
         self.window = MainWindow(self.qtapp, self, backend)
 
     def run(self):
@@ -26,6 +26,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.qtapp = qtapp
         self.frontend = frontend
         self.backend = backend
+        self.plotter = None
         self.ui = uic.loadUi(op.dirname(__file__)+"/frontend.ui", self)
         self.ui.statusBar.setSizeGripEnabled(False)
         self.setup()
@@ -35,6 +36,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setupLogging()
         self.setupstatusindicator()
         self.ui.actionToggle_State.triggered.connect(self.statusButton.click)
+        self.ui.actionPlotter.triggered.connect(self.showPlotter)
 
     def run(self):
         self.show()
@@ -74,10 +76,14 @@ class MainWindow(QtWidgets.QMainWindow):
             self.statusIndicator.setStyleSheet(
                 "QRadioButton::indicator{border: 1px solid darkgray;background-color: rgb(248, 123, 123);border-radius: 8px;}")
             self.statusButton.setText("RST")
-        else:
+        elif backendstate == self.backend.states.off:
             self.statusIndicator.setStyleSheet(
                 "QRadioButton::indicator{border: 1px solid darkgray;background-color: light gray;border-radius: 8px;}")
             self.statusButton.setText("CON")
+        else:
+            self.statusIndicator.setStyleSheet(
+                "QRadioButton::indicator{border: 1px solid darkgray;background-color: light gray;border-radius: 8px;}")
+            self.statusButton.setText("---")
 
     def setupLogging(self):
         #create a text widget & status bar to log into
@@ -102,6 +108,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.loggingDock.setWindowTitle(f"drc log")
         self.ui.actionLog.triggered.connect(
             lambda: self.loggingDock.setVisible(self.loggingDock.isHidden()))
+
+    def showPlotter(self):
+        if self.plotter is None:
+            self.plotter = plotter.Plotter(self.backend.data)
+            self.plotter.show()
 
 class QtLog2TextEditHandler(QtCore.QObject,logging.StreamHandler):
     sig = QtCore.pyqtSignal(str)
