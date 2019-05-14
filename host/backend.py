@@ -34,13 +34,23 @@ class Backend(QtCore.QObject):
         self.cfg = cfg
         self.state = state.notfound
         self.states = state
-        self.pingtimer = QtCore.QTimer()
-        self.pingtimer.setInterval(1000)
-        self.pingtimer.timeout.connect(self.ping)
+        self.slowtimer = QtCore.QTimer()
+        self.slowtimer.setInterval(1000)
+        self.slowtimer.timeout.connect(self.slowSample)
         self.pingprocess = None
-        self.pingtimer.start()
+        self.slowtimer.start()
         self.data = deque(maxlen=30*100)
+        self.cacheusage = 0
+        self.slowSample()
+
+    def slowSample(self):
         self.ping()
+        self.cleardatacache()
+
+    def cleardatacache(self):
+        clear = len(self.data)>30*100*0.9
+        while clear and len(self.data)>30*100*0.5:
+            self.data.popleft()
 
     def ping(self):
         if self.state == state.off or self.state == state.notfound:

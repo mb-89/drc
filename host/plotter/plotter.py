@@ -1,8 +1,14 @@
 import pyqtgraph as pg
+pg.setConfigOptions(antialias=True)
+pg.setConfigOption('background', 'w')
+pg.setConfigOption('foreground', 'k')
 from pyqtgraph.Qt import QtCore, QtGui
 import numpy as np
 from time import time
 from math import sin
+import itertools
+import copy
+import threading
 
 class Plotter(QtCore.QObject):
     def __init__(self,datasrc):
@@ -19,46 +25,35 @@ class PlotterWindow(pg.GraphicsWindow):
         self.chunksize = 100
         self.setWindowTitle("realtime plot")
         self.p = self.addPlot()
+        self.v = self.p.getViewBox()
+        self.line0 = self.p.plot(pen=pg.mkPen((0,2),color='r', width=2))
+        self.line1 = self.p.plot(pen=pg.mkPen((1,2),color='r', width=2))
         self.p.setLabel('bottom','Time','s')
-        self.p.setXRange(-10,0)
+        self.p.setXRange(0,10)
         self.data = np.empty(( self.chunksize+1,2))
         self.splines = []
         self.currSample = 0
         self.t0 = time()
+        self.tmax = 10
         self.lasttime = self.t0
 
         self.timer = QtCore.QTimer()
-        self.timer.setInterval(10)
+        self.timer.setInterval(20)
         self.timer.timeout.connect(self.update)
         self.timer.start()
 
     def update(self):
-        Idx = -1
-        while True:
-            try: sample = self.datasrc[Idx]
-            except IndexError: break
-            t = sample[0]
-            v = sample[-1]
-            self.addsample(t-self.t0,v)
-            if t<=self.lasttime:break
-            Idx-=1
-        self.lasttime=time()
+        maxidx = int(min(len(self.datasrc), 1000))
+        #with threading.Lock():
+        tmp = [self.datasrc[-idx-1] for idx in range(maxidx)]
+        if maxidx==0:
+            self.t0 = time()
+            self.tmax = 10
+            return
+        t1 = tmp[0][0]-self.t0
+        self.line0.setData(x=[x[0]-self.t0 for x in tmp],y=[sin(x[0]-self.t0) for x in tmp])
+        self.line1.setData(x=[x[0]-self.t0 for x in tmp],y=[x[-1] for x in tmp])
+        if t1 <= self.tmax: return
+        self.v.translateBy(x=t1-self.tmax)
+        self.tmax = t1
 
-    def addsample(self,t,y):
-        for s in self.splines: s.setPos(-t,0)
-        idx = self.currSample % self.chunksize
-        if idx == 0:
-            newspline = self.p.plot()
-            self.splines.append(newspline)
-            lastdata = self.data[-1]
-            self.data = np.empty(( self.chunksize+1,2))
-            self.data[0] = lastdata
-            while len(self.splines)>21:
-                s = self.splines.pop(0)
-                self.p.removeItem(s)
-        else:
-            newspline = self.splines[-1]
-        self.data[idx+1,0] = t
-        self.data[idx+1,1] =  y
-        newspline.setData(x=self.data[:idx+2,0], y=self.data[:idx+2,1])
-        self.currSample +=1

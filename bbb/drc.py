@@ -69,8 +69,8 @@ class DRC(QtCore.QObject):
 
     def sendudp(self):
         if not self.udpsendcnt: log.debug("Started sending on UDP socket")
-        s = sin(2*3.1415*self.time)
-        dataout = [self.udpsendcnt, self.udprecvcnt, self.state.value, s**2]
+        s = sin(self.time)
+        dataout = [self.udpsendcnt, self.udprecvcnt, self.state.value, s]
         databytes = struct.pack("{}f".format(len(dataout)),*dataout)
         self.socket.writeDatagram(databytes, QtNetwork.QHostAddress.Broadcast, 6000)
         self.udpsendcnt+=1
