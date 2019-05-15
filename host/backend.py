@@ -133,6 +133,7 @@ class BackgroundWorker(QtCore.QObject):
         self.t2.setInterval(10)
         self.t2.timeout.connect(self.sampleFast)
         self.t2.start()
+        self.angle0set = 0
 
     def sampleSlow(self):
         #print(f"{self.samples} / {int(QtCore.QThread.currentThreadId())}")
@@ -166,15 +167,16 @@ class BackgroundWorker(QtCore.QObject):
     def recvudp(self):
         while self.socket.hasPendingDatagrams():
             data = self.socket.readDatagram(1024)
-            self.dataIn = struct.unpack("{}f".format(4),data[0])
+            self.dataIn = struct.unpack("{}f".format(5),data[0])
             self.dataRecv.emit(self.dataIn)
-            #if self.udprecvcnt%100==0:log.debug(self.dataIn, extra = log.HST)
+            if self.udprecvcnt%100==0:log.debug(self.dataIn, extra = log.HST)
         self.udprecvcnt+=1
         self.udpwatchdog = 10
 
     def sendudp(self):
         if self.udprecvcnt < 1: return
-        databytes = struct.pack("{}f".format(3),*[self.udpsendcnt, self.udprecvcnt, self.killcmd])
+        data = [self.udpsendcnt, self.udprecvcnt, self.killcmd, self.angle0set]
+        databytes = struct.pack("{}f".format(len(data)),*data)
         self.socket.writeDatagram(databytes, QtNetwork.QHostAddress.Broadcast, 6001)
         self.udpsendcnt+=1
 

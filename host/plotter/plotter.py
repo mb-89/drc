@@ -1,5 +1,6 @@
 import pyqtgraph as pg
-pg.setConfigOptions(antialias=True)
+#pg.setConfigOptions(antialias=True)
+pg.setConfigOptions(useOpenGL=True)
 pg.setConfigOption('background', 'w')
 pg.setConfigOption('foreground', 'k')
 from pyqtgraph.Qt import QtCore, QtGui
@@ -26,10 +27,12 @@ class PlotterWindow(pg.GraphicsWindow):
         self.setWindowTitle("realtime plot")
         self.p = self.addPlot()
         self.v = self.p.getViewBox()
-        self.line0 = self.p.plot(pen=pg.mkPen((0,2),color='r', width=2))
-        self.line1 = self.p.plot(pen=pg.mkPen((1,2),color='r', width=2))
+        self.line0 = self.p.plot(pen=pg.mkPen((0,2),color='r'))
+        self.line1 = self.p.plot(pen=pg.mkPen((1,2),color='r'))
         self.p.setLabel('bottom','Time','s')
-        self.p.setXRange(0,10)
+        self.p.setXRange(0,1000)
+        self.line0.setData(x=[x for x in range(1000)])
+        self.line1.setData(x=[x for x in range(1000)])
         self.data = np.empty(( self.chunksize+1,2))
         self.splines = []
         self.currSample = 0
@@ -51,9 +54,10 @@ class PlotterWindow(pg.GraphicsWindow):
             self.tmax = 10
             return
         t1 = tmp[0][0]-self.t0
-        self.line0.setData(x=[x[0]-self.t0 for x in tmp],y=[sin(x[0]-self.t0) for x in tmp])
-        self.line1.setData(x=[x[0]-self.t0 for x in tmp],y=[x[-1] for x in tmp])
+
+        self.line0.setData(y=[x[-2] for x in tmp])
+        self.line1.setData(y=[x[-1] for x in tmp])
         if t1 <= self.tmax: return
-        self.v.translateBy(x=t1-self.tmax)
+        #self.v.translateBy(x=t1-self.tmax)
         self.tmax = t1
 
